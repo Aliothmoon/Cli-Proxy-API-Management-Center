@@ -44,7 +44,11 @@ import { useAuthFilesOauth } from '@/features/authFiles/hooks/useAuthFilesOauth'
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
 import { useAuthFilesStats } from '@/features/authFiles/hooks/useAuthFilesStats';
 import { useAuthFilesStatusBarCache } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
-import { readAuthFilesUiState, writeAuthFilesUiState } from '@/features/authFiles/uiState';
+import {
+  readAuthFilesUiState,
+  writeAuthFilesUiState,
+  type AuthFilesStatusFilter,
+} from '@/features/authFiles/uiState';
 import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
 import styles from './AuthFilesPage.module.scss';
@@ -64,6 +68,7 @@ export function AuthFilesPage() {
   const navigate = useNavigate();
 
   const [filter, setFilter] = useState<'all' | string>('all');
+  const [statusFilter, setStatusFilter] = useState<AuthFilesStatusFilter>('enabled');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(9);
@@ -162,6 +167,14 @@ export function AuthFilesPage() {
     if (typeof persisted.filter === 'string' && persisted.filter.trim()) {
       setFilter(persisted.filter);
     }
+    if (
+      typeof persisted.statusFilter === 'string' &&
+      (persisted.statusFilter === 'all' ||
+        persisted.statusFilter === 'enabled' ||
+        persisted.statusFilter === 'disabled')
+    ) {
+      setStatusFilter(persisted.statusFilter);
+    }
     if (typeof persisted.search === 'string') {
       setSearch(persisted.search);
     }
@@ -174,8 +187,8 @@ export function AuthFilesPage() {
   }, []);
 
   useEffect(() => {
-    writeAuthFilesUiState({ filter, search, page, pageSize });
-  }, [filter, search, page, pageSize]);
+    writeAuthFilesUiState({ filter, statusFilter, search, page, pageSize });
+  }, [filter, statusFilter, search, page, pageSize]);
 
   useEffect(() => {
     setPageSizeInput(String(pageSize));
@@ -249,16 +262,24 @@ export function AuthFilesPage() {
   }, [files]);
 
   const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: files.length };
-    files.forEach((file) => {
+    const source =
+      statusFilter === 'all'
+        ? files
+        : statusFilter === 'disabled'
+          ? files.filter((f) => f.disabled)
+          : files.filter((f) => !f.disabled);
+    const counts: Record<string, number> = { all: source.length };
+    source.forEach((file) => {
       if (!file.type) return;
       counts[file.type] = (counts[file.type] || 0) + 1;
     });
     return counts;
-  }, [files]);
+  }, [files, statusFilter]);
 
   const filtered = useMemo(() => {
     return files.filter((item) => {
+      if (statusFilter === 'enabled' && item.disabled) return false;
+      if (statusFilter === 'disabled' && !item.disabled) return false;
       const matchType = filter === 'all' || item.type === filter;
       const term = search.trim().toLowerCase();
       const matchSearch =
@@ -268,7 +289,7 @@ export function AuthFilesPage() {
         (item.provider || '').toString().toLowerCase().includes(term);
       return matchType && matchSearch;
     });
-  }, [files, filter, search]);
+  }, [files, filter, statusFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -518,6 +539,21 @@ export function AuthFilesPage() {
                 }}
                 placeholder={t('auth_files.search_placeholder')}
               />
+            </div>
+            <div className={styles.filterItem}>
+              <label>{t('auth_files.status_filter_label')}</label>
+              <select
+                className={styles.pageSizeSelect}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as AuthFilesStatusFilter);
+                  setPage(1);
+                }}
+              >
+                <option value="all">{t('auth_files.status_filter_all')}</option>
+                <option value="enabled">{t('auth_files.status_filter_enabled')}</option>
+                <option value="disabled">{t('auth_files.status_filter_disabled')}</option>
+              </select>
             </div>
             <div className={styles.filterItem}>
               <label>{t('auth_files.page_size_label')}</label>
